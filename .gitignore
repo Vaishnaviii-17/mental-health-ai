@@ -10,7 +10,6 @@ venv/
 
 # Model files (optional — if large)
 *.h5
-*.pkl
 *.joblib
 
 # OS files
