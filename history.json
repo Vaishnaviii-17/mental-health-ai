@@ -1,0 +1,203 @@
+[
+  {
+    "text": "Today was ordinary. I woke up, completed my tasks, had lunch, and spent the evening scrolling on my phone. Nothing particularly good or bad happened, and I don't feel strongly about anything.",
+    "sentiment": "neutral",
+    "emotion": "joy",
+    "confidence": 44.9,
+    "timestamp": "2026-04-07T10:01:35Z"
+  },
+  {
+    "text": "I'm not exactly sad, but everything feels repetitive. I keep doing the same things, and it’s getting harder to stay motivated.",
+    "sentiment": "negative",
+    "emotion": "sadness",
+    "confidence": 60.6,
+    "timestamp": "2026-04-07T10:02:26Z"
+  },
+  {
+    "text": "I'm not exactly sad, but everything feels repetitive. I keep doing the same things, and it’s getting harder to stay motivated.",
+    "sentiment": "negative",
+    "emotion": "sadness",
+    "confidence": 60.6,
+    "timestamp": "2026-04-07T10:09:29Z"
+  },
+  {
+    "text": "Hi so my day was going good but nothing special is happening so I don't know how to feel.",
+    "sentiment": "neutral",
+    "emotion": "joy",
+    "confidence": 44.6,
+    "timestamp": "2026-04-07T10:10:24Z"
+  },
+  {
+    "text": "I'm not exactly sad, but everything feels repetitive. I keep doing the same things, and it’s getting harder to stay motivated.",
+    "sentiment": "negative",
+    "emotion": "sadness",
+    "confidence": 60.6,
+    "timestamp": "2026-04-07T10:16:24Z"
+  },
+  {
+    "text": "Me khoop irritated aahe. Aani mala khoop raag yeto.",
+    "sentiment": "negative",
+    "emotion": "mixed",
+    "confidence": 86.8,
+    "timestamp": "2026-04-07T10:17:18Z"
+  },
+  {
+    "text": "mala kalat nahi aahe ki kay karu",
+    "sentiment": "neutral",
+    "emotion": "mixed",
+    "confidence": 56.9,
+    "timestamp": "2026-04-07T10:17:50Z"
+  },
+  {
+    "text": "mala khup raag aalay",
+    "sentiment": "neutral",
+    "emotion": "mixed",
+    "confidence": 53.3,
+    "timestamp": "2026-04-07T10:26:59Z",
+    "language": "so"
+  },
+  {
+    "text": "mala khoop raag allay",
+    "sentiment": "neutral",
+    "emotion": "mixed",
+    "confidence": 46.3,
+    "timestamp": "2026-04-07T10:27:31Z",
+    "language": "so"
+  },
+  {
+    "text": "I am getting very angry.",
+    "sentiment": "negative",
+    "emotion": "mixed",
+    "confidence": 69.3,
+    "timestamp": "2026-04-07T10:28:22Z",
+    "language": "no"
+  },
+  {
+    "text": "mujhe bohot gussa aa raha hai",
+    "sentiment": "positive",
+    "emotion": "mixed",
+    "confidence": 61.4,
+    "timestamp": "2026-04-07T10:28:39Z",
+    "language": "so"
+  },
+  {
+    "text": "mujhe bohot gussa aa raha hai",
+    "sentiment": "negative",
+    "emotion": "mixed",
+    "confidence": 67.0,
+    "timestamp": "2026-04-07T10:36:06Z",
+    "language": "auto"
+  },
+  {
+    "text": "mala khup raag yeto aahe",
+    "sentiment": "neutral",
+    "emotion": "mixed",
+    "confidence": 50.7,
+    "timestamp": "2026-04-07T10:36:29Z",
+    "language": "auto"
+  },
+  {
+    "text": "आज दिन सामान्य था और मुझे कुछ खास महसूस नहीं हुआ",
+    "sentiment": "neutral",
+    "emotion": "neutral",
+    "confidence": 62.1,
+    "timestamp": "2026-04-07T10:37:39Z",
+    "language": "auto"
+  },
+  {
+    "text": "mala kalat nahi aahe ki mi pudhe kay karu",
+    "sentiment": "neutral",
+    "emotion": "mixed",
+    "confidence": 54.0,
+    "timestamp": "2026-04-07T10:38:03Z",
+    "language": "auto"
+  },
+  {
+    "text": "Aaj thoda stressed hoon but I will manage",
+    "sentiment": "neutral",
+    "emotion": "anxiety",
+    "confidence": 44.7,
+    "timestamp": "2026-04-07T10:38:31Z",
+    "language": "auto"
+  },
+  {
+    "text": "mala kalat nahi aahe ki mi pudhe kay karu",
+    "sentiment": "neutral",
+    "emotion": "mixed",
+    "confidence": 54.0,
+    "timestamp": "2026-04-07T10:39:00Z",
+    "language": "auto"
+  },
+  {
+    "text": "mujhe bohot gussa aa raha hai",
+    "sentiment": "negative",
+    "emotion": "mixed",
+    "confidence": 67.0,
+    "timestamp": "2026-04-07T10:49:22Z",
+    "language": "hi"
+  },
+  {
+    "text": "mala khup raag yetoy",
+    "sentiment": "neutral",
+    "emotion": "mixed",
+    "confidence": 49.1,
+    "timestamp": "2026-04-07T10:49:55Z",
+    "language": "mr"
+  },
+  {
+    "text": "mala kalat nahi aahe ki kay karu ekta ekta vatatay",
+    "sentiment": "neutral",
+    "emotion": "mixed",
+    "confidence": 59.5,
+    "timestamp": "2026-04-07T10:50:35Z",
+    "language": "mr"
+  },
+  {
+    "text": "I don't know what to do, I feel lonely.",
+    "sentiment": "negative",
+    "emotion": "sadness",
+    "confidence": 67.0,
+    "timestamp": "2026-04-07T10:52:17Z",
+    "language": "mr"
+  },
+  {
+    "text": "Mala bara nahi vatat  ahe.",
+    "sentiment": "neutral",
+    "emotion": "mixed",
+    "confidence": 70.9,
+    "timestamp": "2026-04-07T10:54:47Z",
+    "language": "mr"
+  },
+  {
+    "text": "mujhe accha nahi lag raha",
+    "sentiment": "negative",
+    "emotion": "joy",
+    "confidence": 43.1,
+    "timestamp": "2026-04-07T10:57:23Z",
+    "language": "hi"
+  },
+  {
+    "text": "mujhe samaj nahi aa raha ki kya karu",
+    "sentiment": "neutral",
+    "emotion": "mixed",
+    "confidence": 62.7,
+    "timestamp": "2026-04-07T11:06:42Z",
+    "language": "hi"
+  },
+  {
+    "text": "मझे अच्च नहि लग् रह",
+    "sentiment": "positive",
+    "emotion": "joy",
+    "confidence": 68.1,
+    "timestamp": "2026-04-07T11:13:44Z",
+    "language": "hi"
+  },
+  {
+    "text": "मुझे अच्चा नहि लग् रह है",
+    "sentiment": "negative",
+    "emotion": "joy",
+    "confidence": 43.1,
+    "timestamp": "2026-04-07T11:14:19Z",
+    "language": "hi"
+  }
+]
