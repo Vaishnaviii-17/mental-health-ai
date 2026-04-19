@@ -221,6 +221,7 @@ def detect_emotion(text):
         return "mixed"
     return top_emotions[0]
 
+
 def detect_journal_type(sentiment, emotion, text):
     text = text.lower()
 
@@ -240,6 +241,7 @@ def detect_journal_type(sentiment, emotion, text):
         return "daily_log"
 
     return "reflection"
+
 
 def get_intensity(confidence):
     if confidence >= 85:
@@ -313,6 +315,7 @@ def generate_therapy_response(emotion, sentiment):
 
 
 import random
+
 
 def generate_reflection_question(emotion):
     questions = {
@@ -411,7 +414,7 @@ def predict_sentiment(text: str, language: str = "en") -> dict:
 
     if not cleaned:
         journal_message = f"{therapy_response} {reflection_question}"
-        
+
         return {
             "original_text": original_text,
             "devanagari_text": devanagari_text,
@@ -442,7 +445,6 @@ def predict_sentiment(text: str, language: str = "en") -> dict:
     therapy_response = generate_therapy_response(emotion, sentiment_class)
     reflection_question = generate_reflection_question(emotion)
     journal_message = f"{therapy_response} {reflection_question}"
-    
 
     return {
         "original_text": original_text,
@@ -460,7 +462,7 @@ def predict_sentiment(text: str, language: str = "en") -> dict:
         "therapy_response": therapy_response,
         "reflection_question": reflection_question,
         "journal_type": journal_type,
-        "journal_message": journal_message  
+        "journal_message": journal_message
     }
 
 
@@ -848,6 +850,138 @@ HTML = """<!DOCTYPE html>
   }
   .error-msg.visible { display: block; }
 
+  .chat-modal-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.64);
+    justify-content: center;
+    align-items: center;
+    z-index: 999;
+    padding: 16px;
+  }
+
+  .chat-modal {
+    width: min(92vw, 460px);
+    height: min(72vh, 560px);
+    background: linear-gradient(180deg, #1b1f2d 0%, #151a25 100%);
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    box-shadow: 0 24px 70px rgba(0, 0, 0, 0.62);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .chat-header {
+    padding: 14px 16px;
+    background: #242a3c;
+    color: var(--text);
+    font-family: 'DM Mono', monospace;
+    font-size: 12px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .chat-close {
+    cursor: pointer;
+    font-size: 14px;
+    color: var(--muted);
+    transition: color .2s ease;
+  }
+  .chat-close:hover { color: var(--text); }
+
+  .chat-messages {
+    flex: 1;
+    padding: 14px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    background:
+      radial-gradient(circle at top, rgba(129, 140, 248, 0.06), transparent 35%),
+      linear-gradient(180deg, rgba(13, 15, 20, 0.3), rgba(13, 15, 20, 0.06));
+  }
+
+  .chat-row {
+    display: flex;
+    width: 100%;
+  }
+
+  .chat-row.user {
+    justify-content: flex-end;
+  }
+
+  .chat-row.ai {
+    justify-content: flex-start;
+  }
+
+  .chat-bubble {
+    max-width: 80%;
+    padding: 10px 12px;
+    border-radius: 14px;
+    font-size: 14px;
+    line-height: 1.55;
+    word-break: break-word;
+    overflow-wrap: break-word;
+    white-space: pre-wrap;
+    border: 1px solid transparent;
+    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.18);
+  }
+
+  .chat-bubble.user {
+    background: linear-gradient(180deg, #4ade80 0%, #22c55e 100%);
+    color: #08130d;
+    border-top-right-radius: 6px;
+  }
+
+  .chat-bubble.ai {
+    background: #242a3c;
+    color: var(--text);
+    border-color: rgba(255, 255, 255, 0.04);
+    border-top-left-radius: 6px;
+  }
+
+  .chat-input-row {
+    display: flex;
+    gap: 10px;
+    padding: 12px;
+    border-top: 1px solid var(--border);
+    background: rgba(13, 15, 20, 0.92);
+  }
+
+  .chat-input {
+    flex: 1;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 11px 14px;
+    outline: none;
+    background: #0f131b;
+    color: var(--text);
+    font-size: 14px;
+  }
+
+  .chat-input::placeholder { color: var(--muted); }
+  .chat-input:focus { border-color: var(--accent); }
+
+  .chat-send {
+    border: none;
+    border-radius: 999px;
+    padding: 0 16px;
+    min-width: 78px;
+    background: linear-gradient(180deg, #4ade80 0%, #22c55e 100%);
+    color: #08130d;
+    font-weight: 700;
+    cursor: pointer;
+    transition: transform .15s ease, filter .15s ease;
+  }
+  .chat-send:hover { filter: brightness(1.03); }
+  .chat-send:active { transform: translateY(1px); }
+
   footer {
     margin-top: 24px;
     text-align: center;
@@ -958,108 +1092,91 @@ HTML = """<!DOCTYPE html>
     charCount.textContent = textarea.value.length;
   });
 
-  window.onclick = function(e) {
-  const modal = document.getElementById("chatModal");
-  if (e.target === modal) {
-    modal.style.display = "none";
-  }
-}
-   function openChat() {
-  document.getElementById("chatModal").style.display = "flex";
-}
-
-function closeChat() {
-  document.getElementById("chatModal").style.display = "none";
-}
-
-function appendMessage(sender, text) {
-  const box = document.getElementById("chatMessages");
-  const msg = document.createElement("div");
-
-  msg.style.marginBottom = "10px";
-  msg.style.padding = "8px 10px";
-  msg.style.borderRadius = "8px";
-  msg.style.fontSize = "14px";
-  msg.style.lineHeight = "1.4";
-
-  if (sender === "You") {
-    msg.style.background = "#4CAF50";
-    msg.style.color = "white";
-    msg.style.alignSelf = "flex-end";
-    msg.style.textAlign = "right";
-  } else {
-    msg.style.background = "#2a2f45";
-    msg.style.color = "#e8eaf0";  // 👈 FIXED TEXT COLOR
+  function openChat() {
+    document.getElementById("chatModal").style.display = "flex";
+    const box = document.getElementById("chatMessages");
+    setTimeout(() => {
+      box.scrollTop = box.scrollHeight;
+    }, 0);
   }
 
-  msg.innerHTML = text;
-  box.appendChild(msg);
-
-  box.scrollTop = box.scrollHeight;
-}
-
-async function sendMessage() {
-  const input = document.getElementById("chatInput");
-  const box = document.getElementById("chatMessages");
-
-  const msg = input.value.trim();
-  if (!msg) return;
-
-  // USER MESSAGE
-  box.innerHTML += `
-    <div style="text-align:right; margin:8px;">
-      <span style="background:#4ade80; padding:6px 10px; border-radius:10px;">
-        ${msg}
-      </span>
-    </div>
-  `;
-
-  input.value = "";
-
-  // AI typing
-  const typingId = "typing-" + Date.now();
-  box.innerHTML += `
-    <div id="${typingId}" style="text-align:left; margin:8px;">
-      <span style="background:#2a2f45; padding:6px 10px; border-radius:10px;">
-        Typing...
-      </span>
-    </div>
-  `;
-
-  box.scrollTop = box.scrollHeight;
-
-  try {
-    const res = await fetch("/chat", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        message: msg,
-        emotion: lastAnalysis?.emotion,
-        sentiment: lastAnalysis?.sentiment_class
-      })
-    });
-
-    const data = await res.json();
-
-    // replace typing with real reply
-    document.getElementById(typingId).innerHTML = `
-      <span style="background:#2a2f45; padding:6px 10px; border-radius:10px;">
-        ${data.reply}
-      </span>
-    `;
-
-  } catch (err) {
-    document.getElementById(typingId).innerHTML = `
-      <span style="background:#2a2f45; padding:6px 10px; border-radius:10px;">
-        I'm here for you. Tell me more.
-      </span>
-    `;
+  function closeChat() {
+    document.getElementById("chatModal").style.display = "none";
   }
 
-  box.scrollTop = box.scrollHeight;
-}
+  window.addEventListener("click", function (e) {
+    const modal = document.getElementById("chatModal");
+    if (e.target === modal) {
+      modal.style.display = "none";
+    }
+  });
+
+  function scrollChatToBottom() {
+    const box = document.getElementById("chatMessages");
+    box.scrollTop = box.scrollHeight;
+  }
+
+  function appendMessage(sender, text) {
+    const box = document.getElementById("chatMessages");
+    const row = document.createElement("div");
+    row.className = "chat-row " + (sender === "You" ? "user" : "ai");
+
+    const bubble = document.createElement("div");
+    bubble.className = "chat-bubble " + (sender === "You" ? "user" : "ai");
+    bubble.textContent = text;
+
+    row.appendChild(bubble);
+    box.appendChild(row);
+    scrollChatToBottom();
+    return bubble;
+  }
+
+  async function sendMessage() {
+    const input = document.getElementById("chatInput");
+    const box = document.getElementById("chatMessages");
+
+    const msg = input.value.trim();
+    if (!msg) return;
+
+    appendMessage("You", msg);
+    input.value = "";
+    input.focus();
+
+    const typingBubble = appendMessage("AI", "Typing...");
+
+    try {
+      const res = await fetch("/chat", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          message: msg,
+          emotion: lastAnalysis?.emotion,
+          sentiment: lastAnalysis?.sentiment_class
+        })
+      });
+
+      const data = await res.json();
+      typingBubble.textContent = (data && data.reply) ? data.reply : "I'm here for you. Tell me more.";
+    } catch (err) {
+      typingBubble.textContent = "I'm here for you. Tell me more.";
+    }
+
+    scrollChatToBottom();
+  }
+
+  document.addEventListener("DOMContentLoaded", function () {
+    const chatInput = document.getElementById("chatInput");
+    if (chatInput) {
+      chatInput.addEventListener("keydown", function (e) {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          sendMessage();
+        }
+      });
+    }
+  });
 
   function showError(message) {
     errMsg.textContent = message;
@@ -1315,63 +1432,20 @@ document.getElementById('trendBlock').innerHTML =
 
   refreshHistory();
 </script>
-<div id="chatModal" style="
-  display:none;
-  position:fixed;
-  top:0;
-  left:0;
-  width:100%;
-  height:100%;
-  background:rgba(0,0,0,0.6);
-  justify-content:center;
-  align-items:center;
-  z-index:999;
-">
+<div id="chatModal" class="chat-modal-overlay">
+  <div class="chat-modal">
+    <div class="chat-header">
+      <span>AI Listener</span>
+      <span class="chat-close" onclick="closeChat()">✖</span>
+    </div>
 
-  <div style="
-    width:420px;
-    height:500px;
-    background:#1e1e2f;
-    border-radius:12px;
-    box-shadow:0 20px 60px rgba(0,0,0,0.6);
-    display:flex;
-    flex-direction:column;
-    overflow:hidden;
-  ">
+    <div id="chatMessages" class="chat-messages" aria-live="polite" aria-label="Chat messages"></div>
 
-<div style="padding:12px; background:#2a2f45; color:#e8eaf0; border-radius:10px 10px 0 0;">
-  AI Listener
-  <span onclick="closeChat()" style="float:right; cursor:pointer;">✖</span>
-</div>
-
- <div id="chatMessages" style="
-  flex:1;
-  padding:10px;
-  overflow-y:auto;
-  font-size:14px;
-  display:flex;
-  flex-direction:column;
-  gap:10px;
-">
-</div>
-
-  <div style="display:flex;">
-<input id="chatInput" type="text" placeholder="Share your thoughts..." style="
-  flex:1;
-  border:none;
-  padding:8px;
-  outline:none;
-  background:#0d0f14;
-  color:white;
-">
-    <button onclick="sendMessage()" style="
-      background:#4CAF50;
-      border:none;
-      color:white;
-      padding:8px;
-    ">Send</button>
+    <div class="chat-input-row">
+      <input id="chatInput" class="chat-input" type="text" placeholder="Share your thoughts..."/>
+      <button class="chat-send" onclick="sendMessage()">Send</button>
+    </div>
   </div>
-
 </div>
 </body>
 </html>"""
