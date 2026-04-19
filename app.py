@@ -1,6 +1,6 @@
 """
-Mental Health Sentiment Analyzer — Flask Web App
-=================================================
+Therapy-Style AI Mental Health Journal — Flask Web App
+=====================================================
 Run:
     pip install flask deep-translator indic-transliteration
     python app.py
@@ -9,10 +9,21 @@ Then open: http://127.0.0.1:5000
 """
 
 import json
+from dotenv import load_dotenv
 import os
+import google.generativeai as genai
 import pickle
 import re
 from datetime import datetime
+
+load_dotenv()
+
+api_key = os.getenv("GOOGLE_API_KEY")
+genai.configure(api_key=api_key)
+
+genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+
+model = genai.GenerativeModel("gemini-2.5-flash")
 
 import numpy as np
 from deep_translator import GoogleTranslator
@@ -21,24 +32,11 @@ from indic_transliteration import sanscript
 from indic_transliteration.sanscript import transliterate
 from scipy.sparse import hstack
 
-# ─── Load model ──────────────────────────────────────────────
+# ─── Constants ───────────────────────────────────────────────
 MODEL_DIR = "mental_health_model"
-HISTORY_FILE = "history.json"
+JOURNAL_FILE = "journal_history.json"
 CLASS_LABELS = ["positive", "negative", "neutral"]
 
-
-def load_artifacts():
-    arts = {}
-    for name in ("model", "tfidf_word", "tfidf_char", "metadata"):
-        with open(os.path.join(MODEL_DIR, f"{name}.pkl"), "rb") as f:
-            arts[name] = pickle.load(f)
-    return arts
-
-
-ARTIFACTS = load_artifacts()
-print(f"✅ Model loaded — accuracy: {ARTIFACTS['metadata']['accuracy'] * 100:.2f}%")
-
-# ─── Inference ───────────────────────────────────────────────
 NEGATIVE_KEYWORDS = [
     "hopeless", "tired", "no energy", "can't eat", "haven't eaten",
     "crying", "meaningless", "don't care", "depressed", "worthless",
@@ -66,25 +64,31 @@ EMOTION_KEYWORDS = {
             "worn out", "fatigue", "no energy", "low energy", "sleepy",
         ],
     },
-    "sadness": {
+    "sad": {
         "weight": 2,
         "keywords": [
             "sad", "hopeless", "crying", "empty", "lonely", "down",
-            "meaningless", "worthless", "numb", "low",
+            "meaningless", "worthless", "numb", "low", "hurt",
         ],
     },
-    "anxiety": {
+    "anxious": {
         "weight": 2,
         "keywords": [
             "anxious", "nervous", "worried", "overthinking", "panic",
             "stressed", "stress", "overwhelmed", "fear", "uneasy",
         ],
     },
-    "joy": {
+    "happy": {
         "weight": 2,
         "keywords": [
             "happy", "excited", "great", "grateful", "joy", "relieved",
             "good", "calm", "proud", "hopeful",
+        ],
+    },
+    "angry": {
+        "weight": 2,
+        "keywords": [
+            "angry", "frustrated", "mad", "annoyed", "irritated", "furious",
         ],
     },
     "neutral": {
@@ -96,7 +100,41 @@ EMOTION_KEYWORDS = {
     },
 }
 
+THERAPY_RESPONSES = {
+    "sad": "I'm really sorry you're feeling this way. Would you like to talk about what made today difficult?",
+    "anxious": "It seems like your mind is racing. Try focusing on one small step you can control.",
+    "happy": "It's great to see positive energy today. What made today better?",
+    "neutral": "Today seems calm and steady. Even quiet days are important for balance.",
+    "angry": "It sounds like something frustrated you. Taking a short pause might help.",
+    "fatigue": "You sound drained. Resting and reducing pressure for a while could really help.",
+    "mixed": "Thank you for sharing this. It sounds like there may be a lot happening at once.",
+}
 
+REFLECTION_QUESTIONS = {
+    "sad": "What do you think contributed most to this feeling today?",
+    "anxious": "Is there something specific worrying you right now?",
+    "happy": "What is one thing you want to remember from today?",
+    "neutral": "Was there any small moment that stood out?",
+    "angry": "What triggered this feeling?",
+    "fatigue": "What has been draining most of your energy recently?",
+    "mixed": "Would you like to write a little more about what feels most present right now?",
+}
+
+
+# ─── Model Loading ───────────────────────────────────────────
+def load_artifacts():
+    artifacts = {}
+    for name in ("model", "tfidf_word", "tfidf_char", "metadata"):
+        with open(os.path.join(MODEL_DIR, f"{name}.pkl"), "rb") as fh:
+            artifacts[name] = pickle.load(fh)
+    return artifacts
+
+
+ARTIFACTS = load_artifacts()
+print(f"✅ Model loaded — accuracy: {ARTIFACTS['metadata']['accuracy'] * 100:.2f}%")
+
+
+# ─── Text Processing ─────────────────────────────────────────
 def clean_text(text: str) -> str:
     text = str(text).lower()
     text = re.sub(r"http\S+|www\S+", "", text)
@@ -152,7 +190,17 @@ def severe_negative(text):
 
 def force_neutral(text):
     text = text.lower()
-    return any(pattern in text for pattern in NEUTRAL_PATTERNS)
+
+    strong_neutral_phrases = [
+        "nothing stood out",
+        "no strong feelings",
+        "just routine",
+        "felt normal",
+        "average day",
+        "nothing much happened"
+    ]
+
+    return any(p in text for p in strong_neutral_phrases)
 
 
 def detect_emotion(text):
@@ -173,6 +221,25 @@ def detect_emotion(text):
         return "mixed"
     return top_emotions[0]
 
+def detect_journal_type(sentiment, emotion, text):
+    text = text.lower()
+
+    if sentiment == "positive":
+        if any(word in text for word in ["grateful", "thankful", "blessed", "appreciate"]):
+            return "gratitude"
+        return "positive_reflection"
+
+    if sentiment == "negative":
+        if any(word in text for word in ["angry", "frustrated", "hate", "annoyed"]):
+            return "venting"
+        if emotion in {"sad", "tired", "anxious"}:
+            return "emotional_processing"
+        return "venting"
+
+    if sentiment == "neutral":
+        return "daily_log"
+
+    return "reflection"
 
 def get_intensity(confidence):
     if confidence >= 85:
@@ -185,39 +252,93 @@ def get_intensity(confidence):
 def generate_interpretation(sentiment_class, intensity, emotion):
     if sentiment_class == "negative":
         if emotion == "fatigue":
-            return f"You seem mentally tired or drained, with a {intensity} negative tone. Rest and smaller tasks may help."
-        if emotion == "sadness":
-            return f"Your text carries a {intensity} low mood, suggesting emotional heaviness or discouragement."
-        if emotion == "anxiety":
+            return f"You seem mentally tired or drained, with a {intensity} negative tone."
+        if emotion == "sad":
+            return f"Your writing reflects a {intensity} sadness that may feel emotionally heavy."
+        if emotion == "anxious":
             return f"There are signs of a {intensity} anxious state, with stress or worry showing through."
+        if emotion == "angry":
+            return f"Your words carry a {intensity} frustration that may come from something upsetting or unfair."
         if emotion == "mixed":
-            return f"Your message suggests a {intensity} difficult emotional state with overlapping negative signals."
+            return f"Your message suggests a {intensity} difficult emotional state with overlapping feelings."
         return f"The text shows a {intensity} negative tone that may reflect emotional strain."
 
     if sentiment_class == "positive":
-        if emotion == "joy":
-            return f"Your text reflects a {intensity} positive state with signs of joy, relief, or encouragement."
+        if emotion == "happy":
+            return f"Your writing reflects a {intensity} positive state with signs of comfort, joy, or relief."
         return f"The overall tone feels {intensity}ly positive and emotionally supportive."
 
     if emotion == "neutral":
-        return "Your day appears stable and emotionally balanced, though it may feel routine or low in variation."
-    return "The text appears emotionally steady overall, without strong positive or negative signals."
+        return "Your day appears steady and balanced, though it may feel routine or uneventful."
+    return "Your emotional state appears fairly balanced without very strong positive or negative signals."
 
 
 def generate_suggestion(sentiment_class, emotion):
     if sentiment_class == "negative":
         if emotion == "fatigue":
             return "Try rest, hydration, and reducing one demand at a time."
-        if emotion == "anxiety":
+        if emotion == "anxious":
             return "Try slow breathing, grounding, or focusing on one manageable next step."
-        if emotion == "sadness":
+        if emotion == "sad":
             return "Journaling or reaching out to someone you trust may help lighten the load."
+        if emotion == "angry":
+            return "A short pause, a walk, or writing the trigger down may help release tension."
         return "Try taking breaks, journaling, or speaking with someone you trust."
 
     if sentiment_class == "positive":
         return "Keep engaging in the people, habits, or activities that are supporting your well-being."
 
-    return "Consider adding a small meaningful activity, a short walk, or a change in routine for variety."
+    return "Consider adding one small meaningful activity to bring variety or comfort to your day."
+
+
+def generate_therapy_response(emotion, sentiment):
+    if sentiment == "negative":
+        if emotion == "fatigue":
+            return "You sound really drained. Was it more mental exhaustion or physical?"
+        if emotion == "sad":
+            return "That sounds emotionally heavy. Do you feel this has been building over time?"
+        if emotion == "anxious":
+            return "It seems like your mind is quite active right now. Is there something specific causing this?"
+        if emotion == "angry":
+            return "That frustration feels real. What triggered it today?"
+        return "It seems like something is weighing on you. Do you want to explore it a bit more?"
+
+    if sentiment == "positive":
+        return "It's nice to see some positive energy. What made today feel better?"
+
+    if sentiment == "neutral":
+        return "Today seems calm or routine. Did anything small stand out to you?"
+
+    return "Thank you for sharing. Would you like to expand on that?"
+
+
+import random
+
+def generate_reflection_question(emotion):
+    questions = {
+        "sad": [
+            "What do you think contributed most to this feeling?",
+            "Has something like this been on your mind for a while?"
+        ],
+        "anxious": [
+            "Is there a specific thought looping in your mind?",
+            "What feels most uncertain right now?"
+        ],
+        "happy": [
+            "What is one thing you want to remember from today?",
+            "What made today better than usual?"
+        ],
+        "neutral": [
+            "Was there any small moment that stood out?",
+            "Did anything feel slightly different today?"
+        ],
+        "fatigue": [
+            "What has been draining your energy the most?",
+            "Have you been getting enough rest lately?"
+        ]
+    }
+
+    return random.choice(questions.get(emotion, ["Would you like to write more about this?"]))
 
 
 def format_sentiment(sentiment_class, intensity):
@@ -263,7 +384,7 @@ def apply_rule_overrides(text: str, sentiment_class: str, confidence: float, emo
         sentiment_class = "negative"
         confidence = max(confidence, 88.0)
 
-    if emotion in {"fatigue", "sadness", "anxiety"} and sentiment_class == "positive":
+    if emotion in {"fatigue", "sad", "anxious", "angry"} and sentiment_class == "positive":
         sentiment_class = "negative"
         confidence = min(max(confidence, 58.0), 72.0)
 
@@ -285,12 +406,12 @@ def predict_sentiment(text: str, language: str = "en") -> dict:
     if language in {"hi", "mr"}:
         devanagari_text = transliterate_text(text, language)
         translated_text = translate_to_english(devanagari_text)
-    else:
-        translated_text = text
 
     cleaned = clean_text(translated_text)
 
     if not cleaned:
+        journal_message = f"{therapy_response} {reflection_question}"
+        
         return {
             "original_text": original_text,
             "devanagari_text": devanagari_text,
@@ -304,16 +425,24 @@ def predict_sentiment(text: str, language: str = "en") -> dict:
             "interpretation": "No meaningful text was provided.",
             "suggestion": "Try entering a sentence or short paragraph for analysis.",
             "label": "Unknown",
+            "therapy_response": "Thank you for sharing your thoughts.",
+            "reflection_question": "Would you like to write more about this?",
+            "journal_message": "Thank you for sharing.",
         }
 
     sentiment_class, confidence = predict_model_sentiment(cleaned)
     emotion = detect_emotion(translated_text)
+    journal_type = detect_journal_type(sentiment_class, emotion, translated_text)
     sentiment_class, confidence = apply_rule_overrides(translated_text, sentiment_class, confidence, emotion)
 
     intensity = get_intensity(confidence)
     sentiment = format_sentiment(sentiment_class, intensity)
     interpretation = generate_interpretation(sentiment_class, intensity, emotion)
     suggestion = generate_suggestion(sentiment_class, emotion)
+    therapy_response = generate_therapy_response(emotion, sentiment_class)
+    reflection_question = generate_reflection_question(emotion)
+    journal_message = f"{therapy_response} {reflection_question}"
+    
 
     return {
         "original_text": original_text,
@@ -328,30 +457,74 @@ def predict_sentiment(text: str, language: str = "en") -> dict:
         "interpretation": interpretation,
         "suggestion": suggestion,
         "label": titleize_sentiment(sentiment),
+        "therapy_response": therapy_response,
+        "reflection_question": reflection_question,
+        "journal_type": journal_type,
+        "journal_message": journal_message  
     }
 
 
-# ─── Persistent History ──────────────────────────────────────
+# ─── Journal Storage ─────────────────────────────────────────
+def ensure_journal_file():
+    if not os.path.exists(JOURNAL_FILE):
+        with open(JOURNAL_FILE, "w", encoding="utf-8") as fh:
+            json.dump([], fh)
+
+
 def load_history():
-    if not os.path.exists(HISTORY_FILE):
-        return []
+    ensure_journal_file()
     try:
-        with open(HISTORY_FILE, "r", encoding="utf-8") as f:
-            data = json.load(f)
+        with open(JOURNAL_FILE, "r", encoding="utf-8") as fh:
+            data = json.load(fh)
         return data if isinstance(data, list) else []
     except (OSError, json.JSONDecodeError):
         return []
 
 
-def save_history(entry):
-    history = load_history()
-    history.append(entry)
-    history = history[-30:]
-    with open(HISTORY_FILE, "w", encoding="utf-8") as f:
-        json.dump(history, f, ensure_ascii=False, indent=2)
+def write_history(entries):
+    with open(JOURNAL_FILE, "w", encoding="utf-8") as fh:
+        json.dump(entries, fh, ensure_ascii=False, indent=2)
 
 
-# ─── Flask app ───────────────────────────────────────────────
+def save_entry(text, sentiment, emotion, confidence, suggestion):
+    entries = load_history()
+    entry = {
+        "date": datetime.now().strftime("%Y-%m-%d %H:%M"),
+        "text": text,
+        "sentiment": sentiment,
+        "emotion": emotion,
+        "confidence": confidence,
+        "suggestion": suggestion,
+    }
+    entries.append(entry)
+    write_history(entries)
+    return entry
+
+
+def generate_trend(entries):
+    recent = entries[-5:]
+    if not recent:
+        return "Start journaling to build a picture of your recent mood patterns."
+
+    counts = {}
+    for entry in recent:
+        emotion = entry.get("emotion", "mixed")
+        counts[emotion] = counts.get(emotion, 0) + 1
+
+    dominant_emotion = max(counts, key=counts.get)
+    messages = {
+        "sad": "You have been feeling more sad recently.",
+        "anxious": "You have been feeling slightly anxious recently.",
+        "happy": "You have been showing more positive energy recently.",
+        "neutral": "Your recent entries seem fairly steady and balanced.",
+        "angry": "Frustration seems to have appeared in your recent entries.",
+        "fatigue": "You have sounded mentally tired in several recent entries.",
+        "mixed": "Your recent entries show a mix of different emotions.",
+    }
+    return messages.get(dominant_emotion, "Your recent entries show a mix of different emotions.")
+
+
+# ─── Flask App ───────────────────────────────────────────────
 app = Flask(__name__)
 
 HTML = """<!DOCTYPE html>
@@ -359,7 +532,7 @@ HTML = """<!DOCTYPE html>
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>MindRead — Mental Health Sentiment Analyzer</title>
+<title>Therapy-Style AI Mental Health Journal</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet"/>
@@ -414,7 +587,7 @@ HTML = """<!DOCTYPE html>
     bottom: -200px; right: -100px;
   }
 
-  .wrap { width: 100%; max-width: 680px; position: relative; z-index: 1; }
+  .wrap { width: 100%; max-width: 760px; position: relative; z-index: 1; }
 
   header { text-align: center; margin-bottom: 52px; }
   .logo {
@@ -440,7 +613,7 @@ HTML = """<!DOCTYPE html>
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: var(--radius);
-    padding: 32px;
+    padding: 28px;
     margin-bottom: 20px;
   }
 
@@ -471,7 +644,7 @@ HTML = """<!DOCTYPE html>
   }
 
   textarea {
-    min-height: 140px;
+    min-height: 160px;
     line-height: 1.7;
     padding: 16px 18px;
     resize: vertical;
@@ -481,14 +654,14 @@ HTML = """<!DOCTYPE html>
   textarea:focus,
   select:focus { border-color: var(--accent); }
 
-  .input-actions {
+  .action-row {
     display: flex;
-    justify-content: flex-end;
-    margin-top: 10px;
+    flex-wrap: wrap;
     gap: 10px;
+    margin-top: 14px;
   }
 
-  .mic-btn {
+  .tool-btn {
     display: inline-flex;
     align-items: center;
     gap: 8px;
@@ -496,49 +669,32 @@ HTML = """<!DOCTYPE html>
     color: var(--text);
     border: 1px solid var(--border);
     border-radius: 999px;
-    padding: 8px 12px;
+    padding: 10px 14px;
     font-family: 'DM Mono', monospace;
     font-size: 11px;
     cursor: pointer;
     transition: border-color .2s, opacity .2s;
   }
-  .mic-btn:hover { border-color: var(--accent); }
-  .mic-btn.active {
+  .tool-btn:hover { border-color: var(--accent); }
+  .tool-btn.active {
     border-color: var(--accent);
     color: var(--accent);
   }
 
-  .char-count {
-    text-align: right; font-size: 12px; color: var(--muted);
-    font-family: 'DM Mono', monospace; margin-top: 8px;
+  .primary-btn {
+    margin-left: auto;
+    background: var(--accent);
+    color: white;
+    border-color: transparent;
   }
 
-  .btn {
-    width: 100%; margin-top: 20px;
-    padding: 16px;
-    background: var(--accent);
-    color: #fff;
-    border: none; border-radius: 10px;
-    font-family: 'DM Sans', sans-serif;
-    font-size: 15px; font-weight: 500;
-    cursor: pointer;
-    transition: opacity .2s, transform .1s;
-    position: relative; overflow: hidden;
+  .char-count {
+    text-align: right;
+    font-size: 12px;
+    color: var(--muted);
+    font-family: 'DM Mono', monospace;
+    margin-top: 10px;
   }
-  .btn:hover { opacity: .88; }
-  .btn:active { transform: scale(.98); }
-  .btn.loading { pointer-events: none; opacity: .7; }
-  .btn .spinner {
-    display: none; width: 18px; height: 18px;
-    border: 2px solid rgba(255,255,255,.3);
-    border-top-color: #fff;
-    border-radius: 50%;
-    animation: spin .7s linear infinite;
-    margin: 0 auto;
-  }
-  .btn.loading .btn-text { display: none; }
-  .btn.loading .spinner { display: block; }
-  @keyframes spin { to { transform: rotate(360deg); } }
 
   .result {
     display: none;
@@ -547,25 +703,23 @@ HTML = """<!DOCTYPE html>
     overflow: hidden;
     animation: slideUp .35s ease;
   }
-  @keyframes slideUp {
-    from { opacity: 0; transform: translateY(12px); }
-    to   { opacity: 1; transform: translateY(0); }
-  }
   .result.visible { display: block; }
 
   .result-header {
-    padding: 24px 32px;
-    display: flex; align-items: center; gap: 20px;
+    padding: 24px 28px;
+    display: flex;
+    align-items: center;
+    gap: 20px;
   }
   .result-header.positive { background: var(--pos-dim); border-bottom: 1px solid #166534; }
   .result-header.negative { background: var(--neg-dim); border-bottom: 1px solid #991b1b; }
   .result-header.neutral { background: var(--neu-dim); border-bottom: 1px solid #a16207; }
 
-  .result-icon { font-size: 2.4rem; line-height: 1; }
-
+  .result-icon { font-size: 2.2rem; line-height: 1; }
   .result-label {
     font-family: 'Playfair Display', serif;
-    font-size: 1.8rem; font-weight: 700;
+    font-size: 1.8rem;
+    font-weight: 700;
   }
   .result-header.positive .result-label { color: var(--pos); }
   .result-header.negative .result-label { color: var(--neg); }
@@ -574,82 +728,149 @@ HTML = """<!DOCTYPE html>
   .result-tag {
     margin-left: auto;
     font-family: 'DM Mono', monospace;
-    font-size: 11px; letter-spacing: .1em;
-    padding: 4px 10px; border-radius: 20px;
+    font-size: 11px;
+    letter-spacing: .1em;
+    padding: 4px 10px;
+    border-radius: 20px;
   }
   .result-header.positive .result-tag { background: #166534; color: var(--pos); }
   .result-header.negative .result-tag { background: #991b1b; color: var(--neg); }
   .result-header.neutral .result-tag { background: #a16207; color: var(--neu); }
 
-  .result-body { background: var(--surface); padding: 24px 32px; }
+  .result-body {
+    background: var(--surface);
+    padding: 24px 28px;
+  }
 
-  .conf-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
-  .conf-label { font-size: 13px; color: var(--muted); font-family: 'DM Mono', monospace; letter-spacing: .08em; }
-  .conf-value { font-size: 13px; font-family: 'DM Mono', monospace; }
+  .conf-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+  }
+  .conf-label, .conf-value {
+    font-size: 13px;
+    font-family: 'DM Mono', monospace;
+  }
+  .conf-label { color: var(--muted); }
 
   .bar-track {
-    height: 6px; background: var(--border); border-radius: 99px; overflow: hidden;
+    height: 6px;
+    background: var(--border);
+    border-radius: 99px;
+    overflow: hidden;
   }
   .bar-fill {
-    height: 100%; border-radius: 99px;
+    height: 100%;
+    border-radius: 99px;
     transition: width .6s cubic-bezier(.4,0,.2,1);
   }
   .positive .bar-fill { background: var(--pos); }
   .negative .bar-fill { background: var(--neg); }
   .neutral .bar-fill { background: var(--neu); }
 
-  .interpretation {
-    margin-top: 20px; padding-top: 20px;
+  .detail-block {
+    margin-top: 18px;
+    padding-top: 18px;
     border-top: 1px solid var(--border);
-    font-size: 14px; line-height: 1.7; color: var(--muted);
+    color: var(--muted);
+    line-height: 1.7;
+    font-size: 14px;
   }
-  .interpretation strong { color: var(--text); font-weight: 500; }
+  .detail-block strong {
+    color: var(--text);
+    font-weight: 500;
+  }
 
   .history-title {
     font-family: 'DM Mono', monospace;
-    font-size: 10px; letter-spacing: .15em; text-transform: uppercase;
-    color: var(--muted); margin-bottom: 12px;
+    font-size: 10px;
+    letter-spacing: .15em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 14px;
   }
-  .history-list { display: flex; flex-direction: column; gap: 8px; }
+
+  .history-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
   .history-item {
-    background: var(--surface); border: 1px solid var(--border);
-    border-radius: 10px; padding: 12px 16px;
-    display: flex; align-items: center; gap: 12px;
-    cursor: pointer; transition: border-color .2s;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 12px 14px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
   }
-  .history-item:hover { border-color: var(--accent); }
+
   .history-dot {
-    width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
   }
   .history-dot.positive { background: var(--pos); }
   .history-dot.negative { background: var(--neg); }
   .history-dot.neutral { background: var(--neu); }
-  .history-text { flex: 1; font-size: 13px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .history-conf { font-family: 'DM Mono', monospace; font-size: 11px; color: var(--muted); }
+
+  .history-date {
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    color: var(--muted);
+    min-width: 120px;
+  }
+
+  .history-meta {
+    flex: 1;
+    font-size: 13px;
+    color: var(--muted);
+  }
+
+  .trend-box {
+    font-size: 14px;
+    line-height: 1.7;
+    color: var(--muted);
+  }
+
+  .error-msg {
+    display: none;
+    background: #2d1515;
+    border: 1px solid #7f1d1d;
+    border-radius: 10px;
+    padding: 14px 18px;
+    margin-top: 12px;
+    font-size: 14px;
+    color: var(--neg);
+  }
+  .error-msg.visible { display: block; }
 
   footer {
-    margin-top: 48px; text-align: center;
-    font-size: 12px; color: var(--muted);
-    font-family: 'DM Mono', monospace; letter-spacing: .08em;
+    margin-top: 24px;
+    text-align: center;
+    font-size: 12px;
+    color: var(--muted);
+    font-family: 'DM Mono', monospace;
+    letter-spacing: .08em;
   }
   footer span { color: var(--accent); }
 
-  .error-msg {
-    display: none; background: #2d1515;
-    border: 1px solid #7f1d1d; border-radius: 10px;
-    padding: 14px 18px; margin-top: 12px;
-    font-size: 14px; color: var(--neg);
+  @keyframes slideUp {
+    from { opacity: 0; transform: translateY(12px); }
+    to   { opacity: 1; transform: translateY(0); }
   }
-  .error-msg.visible { display: block; }
 </style>
 </head>
 <body>
 <div class="wrap">
 
   <header>
-    <div class="logo"><div class="logo-dot"></div>Mental Health AI<div class="logo-dot"></div></div>
-    <h1>Understand how you<br/><em>truly</em> feel</h1>
-    <p class="subtitle">Paste any text — a journal entry, message, or thought —<br/>and the model will detect its emotional sentiment.</p>
+    <div class="logo"><div class="logo-dot"></div>Therapy Journal AI<div class="logo-dot"></div></div>
+    <h1>A gentle space to<br/><em>reflect</em> and write</h1>
+    <p class="subtitle">Speak or type your thoughts, translate if needed, and explore supportive reflections on how you feel.</p>
   </header>
 
   <div class="card">
@@ -660,21 +881,18 @@ HTML = """<!DOCTYPE html>
       <option value="mr">Marathi</option>
     </select>
 
-    <label for="txt">Your text</label>
-    <textarea id="txt" placeholder="e.g. I've been feeling really overwhelmed lately and I don't know how to cope..."></textarea>
-    <div class="input-actions">
-      <button class="mic-btn" id="translateBtn" type="button">🌐 Translate</button>
-      <button class="mic-btn" id="micBtn" type="button" onclick="startSpeechInput()">
-        <span>🎙</span>
-        <span>Speak</span>
-      </button>
+    <label for="txt">Journal entry</label>
+    <textarea id="txt" placeholder="Write about your day, your thoughts, or how you're feeling right now..."></textarea>
+
+    <div class="action-row">
+      <button class="tool-btn" id="micBtn" type="button" onclick="startSpeechInput()">🎙 Speak</button>
+      <button class="tool-btn" id="translateBtn" type="button">🌐 Translate</button>
+      <button class="tool-btn" id="saveBtn" type="button" onclick="saveJournalEntry()">Save Journal Entry</button>
+      <button class="tool-btn primary-btn" id="analyzeBtn" type="button" onclick="analyze()">Analyze</button>
     </div>
+
     <div class="char-count"><span id="charCount">0</span> characters</div>
     <div class="error-msg" id="errMsg"></div>
-    <button class="btn" id="analyzeBtn" onclick="analyze()">
-      <span class="btn-text">Analyze Sentiment</span>
-      <div class="spinner"></div>
-    </button>
   </div>
 
   <div class="result" id="result">
@@ -691,70 +909,327 @@ HTML = """<!DOCTYPE html>
       <div class="bar-track" id="barTrack">
         <div class="bar-fill" id="barFill" style="width:0%"></div>
       </div>
-      <div class="interpretation" id="interpretation"></div>
+
+      <div class="detail-block" id="emotionBlock"></div>
+      <div class="detail-block" id="interpretationBlock"></div>
+      <div class="detail-block" id="therapyBlock"></div>
+      <div class="detail-block" id="questionBlock"></div>
+      <div class="detail-block" id="trendBlock"></div>
+      <div style="margin-top:15px;text-align:center;">
+  <button onclick="openChat()" style="
+    background:#4CAF50;
+    border:none;
+    padding:10px 16px;
+    border-radius:8px;
+    color:white;
+    cursor:pointer;
+  ">
+    💬 Would you like to talk more?
+  </button>
+</div>
     </div>
   </div>
 
-  <div id="historySection" style="display:none; margin-top:28px;">
-    <div class="history-title">Recent analyses</div>
-    <div class="history-list" id="historyList"></div>
+  <div class="card">
+    <div class="history-title">Your Journal History</div>
+    <div class="history-list" id="journalHistoryList"></div>
   </div>
 
   <footer>
-    Model accuracy <span>63.61%</span> &nbsp;·&nbsp; LinearSVC + TF-IDF &nbsp;·&nbsp; GoEmotions dataset
+    Model accuracy <span>63.61%</span> · LinearSVC + TF-IDF · GoEmotions dataset
   </footer>
-
 </div>
 
 <script>
   const textarea = document.getElementById('txt');
   const charCount = document.getElementById('charCount');
-  const history = [];
+  const languageSelect = document.getElementById('languageSelect');
   const micBtn = document.getElementById('micBtn');
   const translateBtn = document.getElementById('translateBtn');
-  const languageSelect = document.getElementById('languageSelect');
+  const saveBtn = document.getElementById('saveBtn');
+  const analyzeBtn = document.getElementById('analyzeBtn');
+  const errMsg = document.getElementById('errMsg');
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+
   let recognition = null;
+  let lastAnalysis = null;
 
   textarea.addEventListener('input', () => {
     charCount.textContent = textarea.value.length;
   });
 
-  document.getElementById("translateBtn").addEventListener("click", async () => {
-    const text = textarea.value;
-    const language = languageSelect.value;
-    const errMsg = document.getElementById('errMsg');
+  window.onclick = function(e) {
+  const modal = document.getElementById("chatModal");
+  if (e.target === modal) {
+    modal.style.display = "none";
+  }
+}
+   function openChat() {
+  document.getElementById("chatModal").style.display = "flex";
+}
 
+function closeChat() {
+  document.getElementById("chatModal").style.display = "none";
+}
+
+function appendMessage(sender, text) {
+  const box = document.getElementById("chatMessages");
+  const msg = document.createElement("div");
+
+  msg.style.marginBottom = "10px";
+  msg.style.padding = "8px 10px";
+  msg.style.borderRadius = "8px";
+  msg.style.fontSize = "14px";
+  msg.style.lineHeight = "1.4";
+
+  if (sender === "You") {
+    msg.style.background = "#4CAF50";
+    msg.style.color = "white";
+    msg.style.alignSelf = "flex-end";
+    msg.style.textAlign = "right";
+  } else {
+    msg.style.background = "#2a2f45";
+    msg.style.color = "#e8eaf0";  // 👈 FIXED TEXT COLOR
+  }
+
+  msg.innerHTML = text;
+  box.appendChild(msg);
+
+  box.scrollTop = box.scrollHeight;
+}
+
+async function sendMessage() {
+  const input = document.getElementById("chatInput");
+  const box = document.getElementById("chatMessages");
+
+  const msg = input.value.trim();
+  if (!msg) return;
+
+  // USER MESSAGE
+  box.innerHTML += `
+    <div style="text-align:right; margin:8px;">
+      <span style="background:#4ade80; padding:6px 10px; border-radius:10px;">
+        ${msg}
+      </span>
+    </div>
+  `;
+
+  input.value = "";
+
+  // AI typing
+  const typingId = "typing-" + Date.now();
+  box.innerHTML += `
+    <div id="${typingId}" style="text-align:left; margin:8px;">
+      <span style="background:#2a2f45; padding:6px 10px; border-radius:10px;">
+        Typing...
+      </span>
+    </div>
+  `;
+
+  box.scrollTop = box.scrollHeight;
+
+  try {
+    const res = await fetch("/chat", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        message: msg,
+        emotion: lastAnalysis?.emotion,
+        sentiment: lastAnalysis?.sentiment_class
+      })
+    });
+
+    const data = await res.json();
+
+    // replace typing with real reply
+    document.getElementById(typingId).innerHTML = `
+      <span style="background:#2a2f45; padding:6px 10px; border-radius:10px;">
+        ${data.reply}
+      </span>
+    `;
+
+  } catch (err) {
+    document.getElementById(typingId).innerHTML = `
+      <span style="background:#2a2f45; padding:6px 10px; border-radius:10px;">
+        I'm here for you. Tell me more.
+      </span>
+    `;
+  }
+
+  box.scrollTop = box.scrollHeight;
+}
+
+  function showError(message) {
+    errMsg.textContent = message;
+    errMsg.classList.add('visible');
+  }
+
+  function clearError() {
     errMsg.classList.remove('visible');
+  }
+
+  function updateCharCount() {
+    charCount.textContent = textarea.value.length;
+  }
+
+  async function refreshHistory() {
+    try {
+      const res = await fetch('/history');
+      const data = await res.json();
+      const entries = data.entries || [];
+      const trend = data.trend || '';
+
+      const list = document.getElementById('journalHistoryList');
+      list.innerHTML = '';
+
+      if (!entries.length) {
+        list.innerHTML = '<div class="history-meta">No journal entries saved yet.</div>';
+      } else {
+        entries.forEach((entry) => {
+          const item = document.createElement('div');
+          item.className = 'history-item';
+          item.innerHTML = `
+            <div class="history-dot ${entry.sentiment_class || 'neutral'}"></div>
+            <div class="history-date">${entry.date}</div>
+            <div class="history-meta">${entry.emotion} | ${entry.sentiment}</div>
+          `;
+          list.appendChild(item);
+        });
+      }
+
+      if (trend && lastAnalysis) {
+        document.getElementById('trendBlock').innerHTML = '<strong>Trend Insight:</strong><br/>' + trend;
+      }
+    } catch (e) {
+      console.error('Failed to load history');
+    }
+  }
+
+window.analyze = async function () {
+  const textarea = document.getElementById('txt');
+  const text = textarea.value.trim();
+
+  const btn = document.getElementById('analyzeBtn');
+  const errMsg = document.getElementById('errMsg');
+
+  errMsg.classList.remove('visible');
+
+  if (!text) {
+    errMsg.textContent = 'Please enter some text before analysing.';
+    errMsg.classList.add('visible');
+    return;
+  }
+
+  btn.classList.add('loading');
+
+  try {
+    const res = await fetch('/predict', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+  text: text,
+  language: document.getElementById('languageSelect').value
+}),
+    });
+
+    const data = await res.json();
+
+    if (data.error) throw new Error(data.error);
+
+    // ✅ THIS IS THE IMPORTANT PART
+    showResult(data, text);
+
+    lastAnalysis = data;
+
+  } catch (e) {
+    errMsg.textContent = 'Something went wrong. Is the Flask server running?';
+    errMsg.classList.add('visible');
+  } finally {
+    btn.classList.remove('loading');
+  }
+};
+
+  async function saveJournalEntry() {
+    clearError();
+
+    if (!lastAnalysis) {
+      showError('Please analyze an entry before saving it.');
+      return;
+    }
+
+    saveBtn.disabled = true;
 
     try {
-      const response = await fetch("/translate", {
-        method: "POST",
-        headers: {"Content-Type": "application/json"},
+      const res = await fetch('/save-entry', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          text: lastAnalysis.original_text,
+          sentiment: lastAnalysis.sentiment,
+          sentiment_class: lastAnalysis.sentiment_class,
+          emotion: lastAnalysis.emotion,
+          confidence: lastAnalysis.confidence,
+          suggestion: lastAnalysis.suggestion
+        }),
+      });
+
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+
+      await refreshHistory();
+    } catch (e) {
+      showError('Could not save journal entry. Please try again.');
+    } finally {
+      saveBtn.disabled = false;
+    }
+  }
+
+  document.getElementById('translateBtn').addEventListener('click', async () => {
+    const text = textarea.value.trim();
+    const language = languageSelect.value;
+
+    clearError();
+
+    if (!text) {
+      showError('Please enter some text before translating.');
+      return;
+    }
+
+    if (!['hi', 'mr'].includes(language)) {
+      showError('Please select Hindi or Marathi to transliterate.');
+      return;
+    }
+
+    translateBtn.disabled = true;
+
+    try {
+      const response = await fetch('/translate', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({ text, language })
       });
 
       const data = await response.json();
-
       if (data.error) throw new Error(data.error);
 
       if (data.translated) {
         textarea.value = data.translated;
-        charCount.textContent = textarea.value.length;
+        updateCharCount();
       }
     } catch (e) {
-      errMsg.textContent = 'Translation failed. Please try again.';
-      errMsg.classList.add('visible');
+      showError('Translation failed. Please try again.');
+    } finally {
+      translateBtn.disabled = false;
     }
   });
 
   function startSpeechInput() {
-    const errMsg = document.getElementById('errMsg');
-    errMsg.classList.remove('visible');
+    clearError();
 
     if (!SpeechRecognition) {
-      errMsg.textContent = 'Speech recognition is not supported in this browser.';
-      errMsg.classList.add('visible');
+      showError('Speech recognition is not supported in this browser.');
       return;
     }
 
@@ -773,12 +1248,11 @@ HTML = """<!DOCTYPE html>
         textarea.value = textarea.value
           ? textarea.value.trim() + ' ' + transcript
           : transcript;
-        charCount.textContent = textarea.value.length;
+        updateCharCount();
       };
 
       recognition.onerror = () => {
-        errMsg.textContent = 'Could not capture speech. Please try again.';
-        errMsg.classList.add('visible');
+        showError('Could not capture speech. Please try again.');
       };
 
       recognition.onend = () => {
@@ -789,57 +1263,15 @@ HTML = """<!DOCTYPE html>
     recognition.start();
   }
 
-  async function analyze() {
-    const text = textarea.value.trim();
-    const language = languageSelect.value;
-    const btn = document.getElementById('analyzeBtn');
-    const errMsg = document.getElementById('errMsg');
-
-    errMsg.classList.remove('visible');
-
-    if (!text) {
-      errMsg.textContent = 'Please enter some text before analysing.';
-      errMsg.classList.add('visible');
-      return;
-    }
-    if (text.length < 3) {
-      errMsg.textContent = 'Please enter at least a few words for meaningful analysis.';
-      errMsg.classList.add('visible');
-      return;
-    }
-
-    btn.classList.add('loading');
-
-    try {
-      const res = await fetch('/predict', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text, language }),
-      });
-      const data = await res.json();
-
-      if (data.error) throw new Error(data.error);
-
-      showResult(data, text);
-      addHistory(data, text);
-    } catch (e) {
-      errMsg.textContent = 'Something went wrong. Is the Flask server running?';
-      errMsg.classList.add('visible');
-    } finally {
-      btn.classList.remove('loading');
-    }
-  }
-
-  function showResult(data, text) {
-    const result       = document.getElementById('result');
-    const header       = document.getElementById('resultHeader');
-    const icon         = document.getElementById('resultIcon');
-    const label        = document.getElementById('resultLabel');
-    const tag          = document.getElementById('resultTag');
-    const confValue    = document.getElementById('confValue');
-    const barTrack     = document.getElementById('barTrack');
-    const barFill      = document.getElementById('barFill');
-    const interp       = document.getElementById('interpretation');
+  function showResult(data) {
+    const result = document.getElementById('result');
+    const header = document.getElementById('resultHeader');
+    const icon = document.getElementById('resultIcon');
+    const label = document.getElementById('resultLabel');
+    const tag = document.getElementById('resultTag');
+    const confValue = document.getElementById('confValue');
+    const barTrack = document.getElementById('barTrack');
+    const barFill = document.getElementById('barFill');
 
     const sentimentClass = data.sentiment_class || 'neutral';
 
@@ -852,14 +1284,24 @@ HTML = """<!DOCTYPE html>
     icon.textContent =
       sentimentClass === 'positive' ? '🌿' :
       sentimentClass === 'negative' ? '🌧️' : '⛅';
+
     label.textContent = data.label || data.sentiment;
     tag.textContent = sentimentClass.toUpperCase();
     confValue.textContent = data.confidence + '%';
-    interp.innerHTML =
-      "<strong>Emotion:</strong> " + data.emotion +
-      "<br/><br/>" +
-      data.interpretation +
-      "<br/><br/><em>" + data.suggestion + "</em>";
+
+    document.getElementById('emotionBlock').innerHTML =
+      '<strong>Emotion:</strong><br/>' + data.emotion;
+
+    document.getElementById('interpretationBlock').innerHTML =
+      '<strong>Interpretation:</strong><br/>' + data.interpretation;
+
+document.getElementById('therapyBlock').innerHTML =
+  '<strong>Journal Reflection:</strong><br/>' + data.journal_message || "No reflection available.";
+
+document.getElementById('questionBlock').innerHTML = '';
+
+document.getElementById('trendBlock').innerHTML =
+  '<strong>Trend Insight:</strong><br/>' + (data.trend_insight || '');
 
     barFill.style.width = '0%';
     setTimeout(() => { barFill.style.width = data.confidence + '%'; }, 50);
@@ -867,37 +1309,70 @@ HTML = """<!DOCTYPE html>
     result.classList.add('visible');
   }
 
-  function addHistory(data, text) {
-    history.unshift({ data, text });
-    if (history.length > 5) history.pop();
-
-    const section = document.getElementById('historySection');
-    const list = document.getElementById('historyList');
-    section.style.display = 'block';
-    list.innerHTML = '';
-
-    history.forEach((h) => {
-      const item = document.createElement('div');
-      item.className = 'history-item';
-      item.innerHTML = `
-        <div class="history-dot ${(h.data.sentiment_class || 'neutral')}"></div>
-        <div class="history-text">${h.text.substring(0, 80)}${h.text.length > 80 ? '…' : ''}</div>
-        <div class="history-conf">${h.data.confidence}%</div>
-      `;
-      item.onclick = () => {
-        textarea.value = h.text;
-        charCount.textContent = h.text.length;
-        showResult(h.data, h.text);
-        window.scrollTo({ top: 0, behavior: 'smooth' });
-      };
-      list.appendChild(item);
-    });
-  }
-
   textarea.addEventListener('keydown', e => {
     if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') analyze();
   });
+
+  refreshHistory();
 </script>
+<div id="chatModal" style="
+  display:none;
+  position:fixed;
+  top:0;
+  left:0;
+  width:100%;
+  height:100%;
+  background:rgba(0,0,0,0.6);
+  justify-content:center;
+  align-items:center;
+  z-index:999;
+">
+
+  <div style="
+    width:420px;
+    height:500px;
+    background:#1e1e2f;
+    border-radius:12px;
+    box-shadow:0 20px 60px rgba(0,0,0,0.6);
+    display:flex;
+    flex-direction:column;
+    overflow:hidden;
+  ">
+
+<div style="padding:12px; background:#2a2f45; color:#e8eaf0; border-radius:10px 10px 0 0;">
+  AI Listener
+  <span onclick="closeChat()" style="float:right; cursor:pointer;">✖</span>
+</div>
+
+ <div id="chatMessages" style="
+  flex:1;
+  padding:10px;
+  overflow-y:auto;
+  font-size:14px;
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+">
+</div>
+
+  <div style="display:flex;">
+<input id="chatInput" type="text" placeholder="Share your thoughts..." style="
+  flex:1;
+  border:none;
+  padding:8px;
+  outline:none;
+  background:#0d0f14;
+  color:white;
+">
+    <button onclick="sendMessage()" style="
+      background:#4CAF50;
+      border:none;
+      color:white;
+      padding:8px;
+    ">Send</button>
+  </div>
+
+</div>
 </body>
 </html>"""
 
@@ -907,26 +1382,23 @@ def index():
     return render_template_string(HTML)
 
 
-@app.route("/history", methods=["GET"])
-def history_route():
-    return jsonify(load_history())
-
-
 @app.route("/translate", methods=["POST"])
-def translate_text_route():
-    data = request.json
-    text = data.get("text", "")
-    lang = data.get("language", "en")
+def translate_route():
+    data = request.get_json(silent=True) or {}
+    text = data.get("text", "").strip()
+    language = data.get("language", "en").strip().lower()
 
-    transliterated = transliterate_text(text, lang)
+    if not text:
+        return jsonify({"error": "No text provided"}), 400
 
-    return jsonify({
-        "translated": transliterated
-    })
+    if language not in {"hi", "mr"}:
+        return jsonify({"error": "Translation supports only Hindi or Marathi"}), 400
+
+    return jsonify({"translated": transliterate_text(text, language)})
 
 
-@app.route("/predict", methods=["POST"])
-def predict():
+@app.route("/analyze", methods=["POST"])
+def analyze_route():
     data = request.get_json(silent=True) or {}
     text = data.get("text", "").strip()
     language = data.get("language", "en").strip().lower()
@@ -939,21 +1411,89 @@ def predict():
 
     try:
         result = predict_sentiment(text, language)
-        save_history({
-            "text": text,
-            "sentiment": result.get("sentiment_class", "neutral"),
-            "emotion": result.get("emotion", "mixed"),
-            "confidence": result.get("confidence", 0.0),
-            "timestamp": datetime.utcnow().isoformat(timespec="seconds") + "Z",
-            "language": result.get("language", language),
-        })
+        result["trend_insight"] = generate_trend(load_history())
         return jsonify(result)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
 
-import os
+@app.route("/predict", methods=["POST"])
+def predict_alias():
+    return analyze_route()
+
+
+@app.route("/save-entry", methods=["POST"])
+def save_entry_route():
+    data = request.get_json(silent=True) or {}
+
+    text = data.get("text", "").strip()
+    sentiment = data.get("sentiment", "").strip()
+    sentiment_class = data.get("sentiment_class", "neutral").strip()
+    emotion = data.get("emotion", "mixed").strip()
+    confidence = float(data.get("confidence", 0.0))
+    suggestion = data.get("suggestion", "").strip()
+
+    if not text:
+        return jsonify({"error": "No text provided"}), 400
+
+    entry = save_entry(text, sentiment, emotion, confidence, suggestion)
+    entry["sentiment_class"] = sentiment_class
+    entries = load_history()
+    if entries:
+      entries[-1]["sentiment_class"] = sentiment_class
+      write_history(entries)
+
+    return jsonify({
+        "saved": True,
+        "entry": entry,
+        "trend": generate_trend(load_history())
+    })
+
+
+@app.route("/history", methods=["GET"])
+def history_route():
+    entries = load_history()
+    last_ten = list(reversed(entries[-10:]))
+    return jsonify({
+        "entries": last_ten,
+        "trend": generate_trend(entries)
+    })
+
+@app.route("/chat", methods=["POST"])
+def chat():
+    data = request.get_json()
+    user_msg = data.get("message", "")
+
+    if not user_msg:
+        return jsonify({"reply": "Tell me what's on your mind."})
+
+    try:
+        prompt = f"""
+You are a warm, empathetic mental health journaling companion.
+
+Rules:
+- Talk like a human, not a robot
+- Be supportive and calm
+- Ask thoughtful follow-up questions
+- Do NOT repeat yourself
+- Keep responses short but meaningful
+
+User: {user_msg}
+AI:
+"""
+
+        response = model.generate_content(prompt)
+
+        reply = response.text.strip()
+
+        return jsonify({"reply": reply})
+
+    except Exception as e:
+        print(e)
+        return jsonify({"reply": "I'm here for you. Tell me more."})
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 10000))
-    app.run(host="0.0.0.0", port=port)
+    ensure_journal_file()
+    print("🧠 Therapy-Style AI Mental Health Journal")
+    print("   Open: http://127.0.0.1:5000")
+    app.run(debug=True)

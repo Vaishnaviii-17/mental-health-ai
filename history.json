@@ -199,5 +199,21 @@
     "confidence": 43.1,
     "timestamp": "2026-04-07T11:14:19Z",
     "language": "hi"
+  },
+  {
+    "text": "i am feeling lonely",
+    "sentiment": "negative",
+    "emotion": "sadness",
+    "confidence": 76.9,
+    "timestamp": "2026-04-07T15:56:13Z",
+    "language": "en"
+  },
+  {
+    "text": "i am feeling lonely",
+    "sentiment": "negative",
+    "emotion": "sadness",
+    "confidence": 76.9,
+    "timestamp": "2026-04-07T16:05:04Z",
+    "language": "en"
   }
 ]

@@ -1,0 +1,83 @@
+[
+  {
+    "date": "2026-04-08 22:07",
+    "text": "i am feeling good",
+    "sentiment": "moderate positive",
+    "emotion": "happy",
+    "confidence": 71.5,
+    "suggestion": "Keep engaging in the people, habits, or activities that are supporting your well-being.",
+    "sentiment_class": "positive"
+  },
+  {
+    "date": "2026-04-08 22:26",
+    "text": "i am happy",
+    "sentiment": "strong positive",
+    "emotion": "happy",
+    "confidence": 95.9,
+    "suggestion": "Keep engaging in the people, habits, or activities that are supporting your well-being.",
+    "sentiment_class": "positive"
+  },
+  {
+    "date": "2026-04-09 07:37",
+    "text": "i am sad",
+    "sentiment": "strong negative",
+    "emotion": "sad",
+    "confidence": 97.6,
+    "suggestion": "Journaling or reaching out to someone you trust may help lighten the load.",
+    "sentiment_class": "negative"
+  },
+  {
+    "date": "2026-04-09 08:04",
+    "text": "i am very stressed",
+    "sentiment": "slight negative",
+    "emotion": "anxious",
+    "confidence": 51.1,
+    "suggestion": "Try slow breathing, grounding, or focusing on one manageable next step.",
+    "sentiment_class": "negative"
+  },
+  {
+    "date": "2026-04-09 08:05",
+    "text": "i am not happy",
+    "sentiment": "slight negative",
+    "emotion": "happy",
+    "confidence": 59.7,
+    "suggestion": "Try taking breaks, journaling, or speaking with someone you trust.",
+    "sentiment_class": "negative"
+  },
+  {
+    "date": "2026-04-09 09:14",
+    "text": "मुझे बहुत दुख और अकेलापन महसूस हो रहा है",
+    "sentiment": "strong negative",
+    "emotion": "sad",
+    "confidence": 96.5,
+    "suggestion": "Journaling or reaching out to someone you trust may help lighten the load.",
+    "sentiment_class": "negative"
+  },
+  {
+    "date": "2026-04-09 09:14",
+    "text": "Today was just a normal day",
+    "sentiment": "neutral",
+    "emotion": "neutral",
+    "confidence": 63.4,
+    "suggestion": "Consider adding one small meaningful activity to bring variety or comfort to your day.",
+    "sentiment_class": "neutral"
+  },
+  {
+    "date": "2026-04-09 09:14",
+    "text": "आजचा दिवस ठीक होता आणि थोडं बरं वाटतंय",
+    "sentiment": "neutral",
+    "emotion": "neutral",
+    "confidence": 39.5,
+    "suggestion": "Consider adding one small meaningful activity to bring variety or comfort to your day.",
+    "sentiment_class": "neutral"
+  },
+  {
+    "date": "2026-04-09 09:52",
+    "text": "I feel really happy and satisfied with my life",
+    "sentiment": "slight positive",
+    "emotion": "happy",
+    "confidence": 49.4,
+    "suggestion": "Keep engaging in the people, habits, or activities that are supporting your well-being.",
+    "sentiment_class": "positive"
+  }
+]
